@@ -1,0 +1,19 @@
+# Transcritor
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.env
+.venv
+*.log
+uploads/
+*.7z
+*.zip
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
