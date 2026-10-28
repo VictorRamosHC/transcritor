@@ -1,3 +1,2 @@
-Flask==3.0.3
-openai-whisper==20250625
-gunicorn==23.0.0
+gradio==4.44.0
+faster-whisper==1.0.3

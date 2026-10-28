@@ -1,46 +1,50 @@
+import gradio as gr
+from faster_whisper import WhisperModel
+import tempfile
 import os
-from flask import Flask, render_template, request, jsonify
-import whisper
 
-app = Flask(__name__)
+# Carrega o modelo uma vez no startup do Space
+print("Carregando modelo Whisper (base)...")
+model = WhisperModel("base", device="cpu", compute_type="int8")
+print("Modelo carregado.")
 
-# Carrega o modelo ao iniciar (otimizado para serverless)
-print("Carregando modelo do Whisper...")
-model = whisper.load_model("base")
 
-UPLOAD_FOLDER = "/tmp/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+def transcrever(arquivo):
+    if arquivo is None:
+        return "Envie um arquivo de áudio ou vídeo primeiro."
 
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-@app.route("/transcrever", methods=["POST"])
-def transcrever():
-    if "arquivo" not in request.files:
-        return jsonify({"erro": "Nenhum arquivo enviado"}), 400
-    
-    file = request.files["arquivo"]
-    if file.filename == "":
-        return jsonify({"erro": "Nenhum arquivo selecionado"}), 400
-
-    # Salva o arquivo enviado temporariamente
-    caminho_arquivo = os.path.join(UPLOAD_FOLDER, file.filename)
-    file.save(caminho_arquivo)
+    caminho = arquivo if isinstance(arquivo, str) else getattr(arquivo, "name", None)
+    if not caminho or not os.path.exists(caminho):
+        return "Arquivo inválido."
 
     try:
-        # Transcreve o MP4 / áudio
-        result = model.transcribe(caminho_arquivo)
-        
-        # Remove o arquivo do disco após transcrever para não acumular
-        os.remove(caminho_arquivo)
-
-        return jsonify({"texto": result["text"]})
+        segments, info = model.transcribe(
+            caminho,
+            beam_size=5,
+            vad_filter=True,
+            language=None,  # detecção automática
+        )
+        texto = "".join(seg.text for seg in segments).strip()
+        if not texto:
+            return "Nenhuma fala detectada no arquivo."
+        return texto
     except Exception as e:
-        if os.path.exists(caminho_arquivo):
-            os.remove(caminho_arquivo)
-        return jsonify({"erro": str(e)}), 500
+        return f"Erro ao transcrever: {e}"
 
-# Vercel precisa que o app seja exportável
+
+with gr.Blocks(title="Transcrição com Whisper") as demo:
+    gr.Markdown("# 🎙️ Transcrição com Whisper")
+    gr.Markdown("Envie um vídeo MP4 ou arquivo de áudio e obtenha a transcrição completa em texto.")
+
+    with gr.Row():
+        entrada = gr.File(label="Arquivo de áudio/vídeo", file_types=["audio", "video"])
+    btn = gr.Button("Transcrever", variant="primary")
+    saida = gr.Textbox(label="Transcrição", lines=12, show_copy_button=True)
+
+    btn.click(fn=transcrever, inputs=entrada, outputs=saida)
+    entrada.change(fn=transcrever, inputs=entrada, outputs=saida)
+
+    gr.Markdown("Formatos suportados: MP4, MP3, WAV, M4A e outros (via ffmpeg).")
+
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    demo.launch()
